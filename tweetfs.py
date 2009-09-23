@@ -16,29 +16,50 @@ USERNAME    = 'sreejithemk'
 PASSWD      = 'kesavan'
 
 
-def get_tweets(root):
-    # Get the tweets for user and populate the directory with tweets.
-    tweet_dir = root + '/' + USERNAME
+def tweetfs_update(root, api):
+    """
+    This will update the TweetFS filesystem with new tweets.
+    """
 
-    print 'tweet dir', tweet_dir
-    
-    if not os.path.exists(tweet_dir):
-        os.mkdir(tweet_dir)
-    
+    # Setup the user's home directory
+    home_dir = root + '/' + USERNAME
+    if not os.path.exists(home_dir):
+        os.mkdir(home_dir)
+
+    # Get the user's tweets
     tweets = twitter.Api().GetUserTimeline(USERNAME, count=10)
 
+    # Write the user's tweets into regular files. Filename will be the tweet id
     for tweet in tweets:
-        tweet_file = tweet_dir + '/' + str(tweet.id)
+        tweet_file = home_dir + '/' + str(tweet.id)
         if not os.path.exists(tweet_file):
             tf = open(tweet_file, 'a+')
-            tf.writelines(tweet.text + '\n')
+            tf.write(tweet.text + '\n')
             tf.close()
+
+    # Setup user's friend's directories
+    for friend in api.GetFriends():
+        if not os.path.exists(root + '/' + friend._screen_name):
+            os.mkdir(root + '/' + friend._screen_name)
+            
+        # Get friend's tweets
+        tweets = api.GetFriendsTimeline(user=friend.id, count=10)
+
+        # Write friend's tweets into regular files inside the friend's directory
+        for tweet in tweets:
+            tweet_file = root + '/' + friend._screen_name + '/' + str(tweet.id)
+            if not os.path.exists(tweet_file):
+                tf = open(tweet_file, 'a+')
+                tf.write(tweet.text.encode('ascii', 'ignore') + '\n')
+                tf.close()
 
 
 class TweetFS(LoggingMixIn, Operations):    
     def __init__(self, root):
         self.root = realpath(root)
         self.rwlock = Lock()
+        self.api = twitter.Api(username=USERNAME, password=PASSWD)
+        tweetfs_update(self.root, self.api)
     
     def __call__(self, op, path, *args):
         return super(TweetFS, self).__call__(op, self.root + path, *args)
@@ -80,7 +101,7 @@ class TweetFS(LoggingMixIn, Operations):
             return os.read(fh, size)
     
     def readdir(self, path, fh):
-        get_tweets(self.root)
+        #tweetfs_update(self.root, self.api)
         return ['.', '..'] + os.listdir(path)
 
 
@@ -113,6 +134,14 @@ class TweetFS(LoggingMixIn, Operations):
     def write(self, path, data, offset, fh):
         with self.rwlock:
             os.lseek(fh, offset, 0)
+            if os.path.basename(path) == USERNAME:
+                api = twitter.Api(username=USERNAME, password=PASSWD, input_encoding='utf-8')
+                try:
+                    status = api.PostUpdate(data)
+                except UnicodeDecodeError:
+                    print 'Your Message cannot be encoded. Perhaps it contains non-ASCII characters'
+            else:
+                ss
             return os.write(fh, data)
     
 
