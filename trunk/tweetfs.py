@@ -5,15 +5,15 @@ from __future__ import with_statement
 from errno import EACCES
 from os.path import realpath
 from sys import argv, exit
-from threading import Lock
+import threading
 
 import os
 import twitter
 
 from fuse import FUSE, Operations, LoggingMixIn
 
-USERNAME    = 'sreejithemk'
-PASSWD      = 'kesavan'
+USERNAME    = 'twittfs'
+PASSWD      = 'twittfs'
 
 
 def tweetfs_update(root, api):
@@ -57,9 +57,14 @@ def tweetfs_update(root, api):
 class TweetFS(LoggingMixIn, Operations):    
     def __init__(self, root):
         self.root = realpath(root)
-        self.rwlock = Lock()
+        self.rwlock = threading.Lock()
         self.api = twitter.Api(username=USERNAME, password=PASSWD)
-        tweetfs_update(self.root, self.api)
+        
+        # Start a thread that populate the directories with tweets.
+        self.update_thread = threading.Thread(target=tweetfs_update, 
+                name='update-thread', args=(self.root, self.api))
+        self.update_thread.setDaemon()
+        self.update_thread.start()
     
     def __call__(self, op, path, *args):
         return super(TweetFS, self).__call__(op, self.root + path, *args)
