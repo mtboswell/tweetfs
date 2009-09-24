@@ -1,4 +1,15 @@
 #!/usr/bin/env python
+"""
+TweetFS : A FUSE based filesystem that displays tweets as files
+in a twitter user's directory.
+
+Author:
+    Sreejith K <sreejithemk@gmail.com>
+    http://semk.in
+    Copyright (c) 2009
+
+Licensed under GNU GPL v3 or later. Refer COPYING for more.
+"""
 
 from __future__ import with_statement
 
@@ -9,11 +20,15 @@ import threading
 
 import os
 import twitter
+from time import sleep
 
 from fuse import FUSE, Operations, LoggingMixIn
 
-USERNAME    = 'twittfs'
-PASSWD      = 'twittfs'
+USERNAME            = 'twittfs'
+PASSWD              = 'ezp4$$wd'
+UPDATE_INTERVAL     = 600
+USER_TWEETS         = 10
+FRIEND_TWEETS       = 10
 
 
 def tweetfs_update(root, api):
@@ -27,7 +42,7 @@ def tweetfs_update(root, api):
         os.mkdir(home_dir)
 
     # Get the user's tweets
-    tweets = twitter.Api().GetUserTimeline(USERNAME, count=10)
+    tweets = twitter.Api().GetUserTimeline(USERNAME, count=USER_TWEETS)
 
     # Write the user's tweets into regular files. Filename will be the tweet id
     for tweet in tweets:
@@ -43,7 +58,7 @@ def tweetfs_update(root, api):
             os.mkdir(root + '/' + friend._screen_name)
             
         # Get friend's tweets
-        tweets = api.GetFriendsTimeline(user=friend.id, count=10)
+        tweets = api.GetFriendsTimeline(user=friend.id, count=FRIEND_TWEETS)
 
         # Write friend's tweets into regular files inside the friend's directory
         for tweet in tweets:
@@ -53,6 +68,14 @@ def tweetfs_update(root, api):
                 tf.write(tweet.text.encode('ascii', 'ignore') + '\n')
                 tf.close()
 
+def update_scheduler(root, api):
+    """
+    This method calls tweetfs_update regularly.
+    """
+
+    while True:
+        tweetfs_update(root, api)
+        sleep(UPDATE_INTERVAL)
 
 class TweetFS(LoggingMixIn, Operations):    
     def __init__(self, root):
@@ -61,9 +84,9 @@ class TweetFS(LoggingMixIn, Operations):
         self.api = twitter.Api(username=USERNAME, password=PASSWD)
         
         # Start a thread that populate the directories with tweets.
-        self.update_thread = threading.Thread(target=tweetfs_update, 
+        self.update_thread = threading.Thread(target=update_scheduler, 
                 name='update-thread', args=(self.root, self.api))
-        self.update_thread.setDaemon()
+        self.update_thread.daemon = True
         self.update_thread.start()
     
     def __call__(self, op, path, *args):
@@ -73,7 +96,7 @@ class TweetFS(LoggingMixIn, Operations):
         if not os.access(path, mode):
             raise OSError(EACCES, '')
     
-    chmod = os.chmod
+    chmod = None
     chown = os.chown
     
     def create(self, path, mode):
@@ -106,7 +129,6 @@ class TweetFS(LoggingMixIn, Operations):
             return os.read(fh, size)
     
     def readdir(self, path, fh):
-        #tweetfs_update(self.root, self.api)
         return ['.', '..'] + os.listdir(path)
 
 
@@ -146,7 +168,7 @@ class TweetFS(LoggingMixIn, Operations):
                 except UnicodeDecodeError:
                     print 'Your Message cannot be encoded. Perhaps it contains non-ASCII characters'
             else:
-                ss
+                pass
             return os.write(fh, data)
     
 
