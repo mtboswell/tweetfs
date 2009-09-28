@@ -118,10 +118,7 @@ class TweetFS(LoggingMixIn, Operations):
     chown = os.chown
     
     def create(self, path, mode):
-        if os.path.dirname(path).split('/')[-1] == USERNAME:
-            return os.open(path, os.O_WRONLY | os.O_CREAT, mode)
-        else:
-            raise OSError(EACCES, '')
+        return os.open(path, os.O_WRONLY | os.O_CREAT, mode)
     
     def flush(self, path, fh):
         return os.fsync(fh)
@@ -198,7 +195,7 @@ class TweetFS(LoggingMixIn, Operations):
 
         if os.path.isdir(path):
             try:
-                print 'Removing %s from friends list' % user
+                print 'Removing %s from friends list' % user_or_id
                 self.api.DestroyFriendship(user=user_or_id)
                 os.unlink(path)
             except Exception:
