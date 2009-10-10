@@ -95,8 +95,19 @@ def update_scheduler(root, api):
         tweetfs_update(root, api)
         sleep(UPDATE_INTERVAL)
 
-class TweetFS(LoggingMixIn, Operations):    
+class TweetFS(LoggingMixIn, Operations):
+    """
+    This is the filesysten main Class. All virtual filesystems should inherit from 
+    fuse.Operations class which provides low-level filesystem calls, which we can modify 
+    here to work according to our needs. fuse.LogginMixIn class tracks the calls made 
+    by fuse and prints to the STDOUT if foreground is set in FUSE initialization.
+    """
+
     def __init__(self, root):
+        """
+        Initialize the filesystem. Start the thread for updating the tweets.
+        """
+
         self.root = realpath(root)
         self.rwlock = threading.Lock()
         self.api = twitter.Api(username=USERNAME, password=PASSWD)
@@ -108,6 +119,9 @@ class TweetFS(LoggingMixIn, Operations):
         self.update_thread.start()
     
     def __call__(self, op, path, *args):
+        """
+        Keeping track of the calls made in the filesystem.
+        """
         return super(TweetFS, self).__call__(op, self.root + path, *args)
     
     def access(self, path, mode):
@@ -118,15 +132,25 @@ class TweetFS(LoggingMixIn, Operations):
     chown = os.chown
     
     def create(self, path, mode):
+        """
+        This function is called when a new file is created.
+        """
         return os.open(path, os.O_WRONLY | os.O_CREAT, mode)
     
     def flush(self, path, fh):
+        """
+        Called when there is a need to flush data into the file after a write
+        operation.
+        """
         return os.fsync(fh)
 
     def fsync(self, path, datasync, fh):
         return os.fsync(fh)
                 
     def getattr(self, path, fh=None):
+        """
+        Return the file stats for a file
+        """
         st = os.lstat(path)
         return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
             'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
@@ -139,6 +163,10 @@ class TweetFS(LoggingMixIn, Operations):
     listxattr = None
     
     def mkdir(self, path, mode):
+        """
+        mkdir commands over the TweetFS is redirected to this method by fuse.
+        Here we follow the user with the dir name in Twitter.
+        """
         user = os.path.basename(path)
         print 'Now following', user
 
@@ -152,6 +180,9 @@ class TweetFS(LoggingMixIn, Operations):
     open = os.open
         
     def read(self, path, size, offset, fh):
+        """
+        Read calls are redirected here
+        """
         with self.rwlock:
             os.lseek(fh, offset, 0)
             return os.read(fh, size)
@@ -163,12 +194,22 @@ class TweetFS(LoggingMixIn, Operations):
     readlink = os.readlink
     
     def release(self, path, fh):
+        """
+        Closing the file after use
+        """
         return os.close(fh)
         
     def rename(self, old, new):
+        """
+        Renaming a file
+        """
         return os.rename(old, self.root + new)
     
     def rmdir(self, path):
+        """
+        rmdir calls over the TweetFS are redirected to this method by fuse.
+        Here we unfollow the user with the directory name
+        """
         user = os.path.basename(path)
         try:
             print 'Removing %s from friends list' % user
@@ -178,6 +219,9 @@ class TweetFS(LoggingMixIn, Operations):
             print 'Error removing friendship'
     
     def statfs(self, path):
+        """
+        Filesystem stat info
+        """
         stv = os.statvfs(path)
         return dict((key, getattr(stv, key)) for key in ('f_bavail', 'f_bfree',
             'f_blocks', 'f_bsize', 'f_favail', 'f_ffree', 'f_files', 'f_flag',
@@ -187,10 +231,18 @@ class TweetFS(LoggingMixIn, Operations):
         return os.symlink(source, target)
     
     def truncate(self, path, length, fh=None):
+        """
+        Truncate calls are redirected to this method by fuse.
+        """
         with open(path, 'r+') as f:
             f.truncate(length)
     
     def unlink(self, path):
+        """
+        This method is called when deleting a file from TweetFS. If path is a 
+        directory we remove the user from the friends list and if it is our 
+        status message, we delete the status from Twitter.
+        """
         user_or_id = os.path.basename(path)
 
         if os.path.isdir(path):
@@ -213,6 +265,8 @@ class TweetFS(LoggingMixIn, Operations):
     utimens = os.utime
     
     def write(self, path, data, offset, fh):
+        """
+        """
         with self.rwlock:
             os.lseek(fh, offset, 0)
             user = os.path.dirname(path).split('/')[-1]
